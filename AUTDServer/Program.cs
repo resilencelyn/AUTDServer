@@ -19,7 +19,7 @@ namespace AUTDServer
     {
         static String SOLUTION_NAME = "TwinCATAUTDServer";
 
-        [STAThread] 
+        [STAThread]
         static void Main(string[] args)
         {
             string SOLUTION_PATH = Path.Combine(
@@ -59,7 +59,7 @@ namespace AUTDServer
                 Console.WriteLine("Connecting to TcXaeShell DTE...");
                 Type t = System.Type.GetTypeFromProgID("TcXaeShell.DTE.15.0");
                 EnvDTE80.DTE2 dte = (EnvDTE80.DTE2)System.Activator.CreateInstance(t);
-            
+
                 dte.SuppressUI = false;
                 dte.MainWindow.Visible = true;
                 dte.UserControl = true;
@@ -71,7 +71,8 @@ namespace AUTDServer
                 Console.WriteLine("Creating a Project...");
                 Project project = CreateProject(dte, SOLUTION_PATH);
                 ITcSysManager sysManager = project.Object;
-                if (ipaddr != null){
+                if (ipaddr != null)
+                {
                     Console.WriteLine("Setting up the Routing Table to " + ipaddr.ToString());
                     AddRoute(sysManager, ipaddr);
                 }
@@ -85,7 +86,7 @@ namespace AUTDServer
                 Console.WriteLine("Saving the Project...");
                 SaveProject(dte, project, SOLUTION_PATH);
                 Console.WriteLine("Done. Do you want to close the TwinCAT config window? [Yes]/No");
-                
+
                 String closeWindow = "Yes";
                 if (!alwaysYes)
                     closeWindow = Console.ReadLine();
@@ -100,7 +101,7 @@ namespace AUTDServer
             }
 
             MessageFilter.Revoke();
- 
+
         }
 
         [DllImport("ole32.dll")]
@@ -167,7 +168,7 @@ namespace AUTDServer
             }
 
             return (DTE)runningObject;
-        } 
+        }
 
         static void SetConfigMode()
         {
@@ -221,7 +222,7 @@ namespace AUTDServer
         {
             project.Save();
             dte.Solution.SaveAs(Path.Combine(path, SOLUTION_NAME + ".sln"));
-            Console.WriteLine("The Solution was saved at "+path+".");
+            Console.WriteLine("The Solution was saved at " + path + ".");
         }
 
         static void AddRoute(ITcSysManager sysManager, IPAddress ipaddr)
@@ -285,7 +286,7 @@ namespace AUTDServer
             {
                 if (box.ItemSubTypeName == "AUTD")
                 {
-                    
+
                     XmlDocument bdoc = new XmlDocument();
                     string bxml = box.ProduceXml(false);
                     bdoc.LoadXml(bxml);
@@ -306,7 +307,7 @@ namespace AUTDServer
                         }
                     }
                     box.ConsumeXml(bdoc.OuterXml);
-                     
+
 
                     autds.Add(box);
                 }
@@ -348,23 +349,33 @@ namespace AUTDServer
                     task1out.CreateChild(name, -1, null, "WORD");
                 }
             }
+            ITcSmTreeItem task1in = sysManager.LookupTreeItem("TIRT^Task 1^Inputs");
+            for (int id = 0; id < autds.Count; id++)
+            {
+                string name = string.Format("input[{0}]", id);
+                task1in.CreateChild(name, -1, null, "WORD");
+            }
             // connect links
             for (int id = 0; id < autds.Count; id++)
             {
                 for (int i = 0; i < HEAD_SIZE; i++)
                 {
                     string source = string.Format("TIRT^Task 1^Outputs^header[{0}]", i);
-                    string destination = string.Format("TIID^EtherCAT Master^Box {0} (AUTD)^RxPdo1^data[{1}]", id+1, i);
+                    string destination = string.Format("TIID^EtherCAT Master^Box {0} (AUTD)^RxPdo1^data[{1}]", id + 1, i);
                     sysManager.LinkVariables(source, destination);
                 }
                 for (int i = 0; i < BODY_SIZE; i++)
                 {
                     string source = string.Format("TIRT^Task 1^Outputs^gbody[{0}][{1}]", id, i);
-                    string destination = string.Format("TIID^EtherCAT Master^Box {0} (AUTD)^RxPdo0^data[{1}]", id+1, i);
+                    string destination = string.Format("TIID^EtherCAT Master^Box {0} (AUTD)^RxPdo0^data[{1}]", id + 1, i);
+                    sysManager.LinkVariables(source, destination);
+                }
+                {
+                    string source = string.Format("TIRT^Task 1^Inputs^input[{0}]", id);
+                    string destination = string.Format("TIID^EtherCAT Master^Box {0} (AUTD)^TxPdo^dummy", id + 1);
                     sysManager.LinkVariables(source, destination);
                 }
             }
-
         }
 
         [Flags()]
@@ -493,7 +504,7 @@ namespace AUTDServer
         // Implement the IOleMessageFilter interface.
         [DllImport("Ole32.dll")]
         private static extern int
-          CoRegisterMessageFilter(IOleMessageFilter newFilter, out 
+          CoRegisterMessageFilter(IOleMessageFilter newFilter, out
           IOleMessageFilter oldFilter);
     }
 
