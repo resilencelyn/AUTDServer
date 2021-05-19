@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Xml;
 using TCatSysManagerLib;
-using System.Text;
 using TwinCAT.SystemManager;
 using EnvDTE;
 using EnvDTE80;
@@ -15,66 +14,56 @@ using TwinCAT.Ads;
 
 namespace AUTDServer
 {
-    class Program
+    internal class Program
     {
-        static String SOLUTION_NAME = "TwinCATAUTDServer";
+        private static readonly string SOLUTION_NAME = "TwinCATAUTDServer";
+        private const int HEAD_SIZE = 64;
+        private const int BODY_SIZE = 249;
 
         [STAThread]
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            string SOLUTION_PATH = Path.Combine(
-                Environment.GetEnvironmentVariable("temp"),
+            var solutionPath = Path.Combine(
+                Environment.GetEnvironmentVariable("temp") ?? string.Empty,
                 SOLUTION_NAME);
             MessageFilter.Register();
             try
             {
                 // Parse Commandline Options
-                bool alwaysYes = false;
-                string[] cmds = System.Environment.GetCommandLineArgs();
-                foreach (string cmd in cmds)
-                {
+                var alwaysYes = false;
+                var commandLineArgs = Environment.GetCommandLineArgs();
+                foreach (var cmd in commandLineArgs)
                     if (cmd == "-y") alwaysYes = true;
-                }
 
                 // Close all TwinCAT Autd Server solutions currently opened
-                IEnumerable<System.Diagnostics.Process> processes = System.Diagnostics.Process.GetProcesses().Where(x => x.MainWindowTitle.StartsWith(SOLUTION_NAME) && x.ProcessName.Contains("devenv"));
-                foreach (var process in processes)
-                {
-                    DTE cdte = GetDTE(process.Id);
-                    if (cdte != null)
-                    {
-                        cdte.Quit();
-                    }
-                }
+                var processes = System.Diagnostics.Process.GetProcesses().Where(x => x.MainWindowTitle.StartsWith(SOLUTION_NAME) && x.ProcessName.Contains("devenv"));
+                foreach (var process in processes) GetDTE(process.Id)?.Quit();;
 
                 // Wait for input
                 Console.WriteLine("Please Enter the IP Address of your Client to allow connection: [127.0.0.1]");
-                IPAddress ipaddr;
-                String ipaddrStr = "127.0.0.1";
-                if (!alwaysYes)
-                    ipaddrStr = Console.ReadLine();
+                var ipaddrStr = "127.0.0.1";
+                if (!alwaysYes) ipaddrStr = Console.ReadLine();
 
-                IPAddress.TryParse(ipaddrStr, out ipaddr);
+                IPAddress.TryParse(ipaddrStr ?? string.Empty, out var ipAddr);
 
                 Console.WriteLine("Connecting to TcXaeShell DTE...");
-                Type t = System.Type.GetTypeFromProgID("TcXaeShell.DTE.15.0");
-                EnvDTE80.DTE2 dte = (EnvDTE80.DTE2)System.Activator.CreateInstance(t);
+                var t = Type.GetTypeFromProgID("TcXaeShell.DTE.15.0");
+                var dte = (DTE2)Activator.CreateInstance(t);
 
                 dte.SuppressUI = false;
                 dte.MainWindow.Visible = true;
                 dte.UserControl = true;
 
-
                 Console.WriteLine("Switching TwinCAT3 to Config Mode...");
                 SetConfigMode();
                 System.Threading.Thread.Sleep(1000);
                 Console.WriteLine("Creating a Project...");
-                Project project = CreateProject(dte, SOLUTION_PATH);
+                var project = CreateProject(dte, solutionPath);
                 ITcSysManager sysManager = project.Object;
-                if (ipaddr != null)
+                if (ipAddr != null)
                 {
-                    Console.WriteLine("Setting up the Routing Table to " + ipaddr.ToString());
-                    AddRoute(sysManager, ipaddr);
+                    Console.WriteLine("Setting up the Routing Table to " + ipAddr);
+                    AddRoute(sysManager, ipAddr);
                 }
                 Console.WriteLine("Scanning Devices...");
                 List<ITcSmTreeItem> autds = ScanAUTDs(sysManager);
@@ -84,10 +73,10 @@ namespace AUTDServer
                 sysManager.ActivateConfiguration();
                 sysManager.StartRestartTwinCAT();
                 Console.WriteLine("Saving the Project...");
-                SaveProject(dte, project, SOLUTION_PATH);
+                SaveProject(dte, project, solutionPath);
                 Console.WriteLine("Done. Do you want to close the TwinCAT config window? [Yes]/No");
 
-                String closeWindow = "Yes";
+                var closeWindow = "Yes";
                 if (!alwaysYes)
                     closeWindow = Console.ReadLine();
                 if (closeWindow != "No") dte.Quit();
@@ -97,11 +86,9 @@ namespace AUTDServer
                 Console.WriteLine("Error. Press any key to exit. Check your license of TwinCAT3.");
                 Console.WriteLine(e.Message);
                 Console.ReadLine();
-
             }
 
             MessageFilter.Revoke();
-
         }
 
         [DllImport("ole32.dll")]
@@ -109,7 +96,7 @@ namespace AUTDServer
 
         public static DTE GetDTE(int processId)
         {
-            string progId = "!TcXaeShell.DTE.15.0:" + processId.ToString();
+            var progId = "!TcXaeShell.DTE.15.0:" + processId;
             object runningObject = null;
 
             IBindCtx bindCtx = null;
@@ -122,55 +109,36 @@ namespace AUTDServer
                 bindCtx.GetRunningObjectTable(out rot);
                 rot.EnumRunning(out enumMonikers);
 
-                IMoniker[] moniker = new IMoniker[1];
-                IntPtr numberFetched = IntPtr.Zero;
+                var moniker = new IMoniker[1];
+                var numberFetched = IntPtr.Zero;
                 while (enumMonikers.Next(1, moniker, numberFetched) == 0)
                 {
-                    IMoniker runningObjectMoniker = moniker[0];
-
+                    var runningObjectMoniker = moniker[0];
                     string name = null;
-
                     try
                     {
-                        if (runningObjectMoniker != null)
-                        {
-                            runningObjectMoniker.GetDisplayName(bindCtx, null, out name);
-                        }
+                        runningObjectMoniker?.GetDisplayName(bindCtx, null, out name);
                     }
                     catch (UnauthorizedAccessException)
                     {
                         // Do nothing, there is something in the ROT that we do not have access to.
                     }
 
-                    if (!string.IsNullOrEmpty(name) && string.Equals(name, progId, StringComparison.Ordinal))
-                    {
-                        Marshal.ThrowExceptionForHR(rot.GetObject(runningObjectMoniker, out runningObject));
-                        break;
-                    }
+                    if (string.IsNullOrEmpty(name) || !string.Equals(name, progId, StringComparison.Ordinal)) continue;
+                    Marshal.ThrowExceptionForHR(rot.GetObject(runningObjectMoniker, out runningObject));
+                    break;
                 }
             }
             finally
             {
-                if (enumMonikers != null)
-                {
-                    Marshal.ReleaseComObject(enumMonikers);
-                }
-
-                if (rot != null)
-                {
-                    Marshal.ReleaseComObject(rot);
-                }
-
-                if (bindCtx != null)
-                {
-                    Marshal.ReleaseComObject(bindCtx);
-                }
+                if (enumMonikers != null) Marshal.ReleaseComObject(enumMonikers);
+                if (rot != null) Marshal.ReleaseComObject(rot);
+                if (bindCtx != null) Marshal.ReleaseComObject(bindCtx);
             }
-
             return (DTE)runningObject;
         }
 
-        static void SetConfigMode()
+        private static void SetConfigMode()
         {
             TcAdsClient client = new TcAdsClient();
             StateInfo mode = new StateInfo();
@@ -182,12 +150,10 @@ namespace AUTDServer
             client.Dispose();
         }
 
-        static void DeleteDirectory(string path)
+        private static void DeleteDirectory(string path)
         {
-            foreach (string directory in Directory.GetDirectories(path))
-            {
+            foreach (var directory in Directory.GetDirectories(path))
                 DeleteDirectory(directory);
-            }
 
             try
             {
@@ -203,37 +169,36 @@ namespace AUTDServer
             }
         }
 
-        static Project CreateProject(EnvDTE80.DTE2 dte, string path)
+        private static Project CreateProject(DTE2 dte, string path)
         {
             if (Directory.Exists(path))
                 DeleteDirectory(path);
             Directory.CreateDirectory(path);
-            //Directory.CreateDirectory(@"C:\Temp\SolutionFolder\MySolution1");
 
-            Solution2 solution = (Solution2)dte.Solution;
+            var solution = dte.Solution as Solution2;
             solution.Create(path, SOLUTION_NAME);
             solution.SaveAs(Path.Combine(path, SOLUTION_NAME + ".sln"));
 
-            string template = @"C:\TwinCAT\3.1\Components\Base\PrjTemplate\TwinCAT Project.tsproj"; //path to project template
+            const string template = @"C:\TwinCAT\3.1\Components\Base\PrjTemplate\TwinCAT Project.tsproj"; //path to project template
             return solution.AddFromTemplate(template, path, SOLUTION_NAME);
         }
 
-        static void SaveProject(EnvDTE80.DTE2 dte, Project project, string path)
+        private static void SaveProject(DTE2 dte, Project project, string path)
         {
             project.Save();
             dte.Solution.SaveAs(Path.Combine(path, SOLUTION_NAME + ".sln"));
             Console.WriteLine("The Solution was saved at " + path + ".");
         }
 
-        static void AddRoute(ITcSysManager sysManager, IPAddress ipaddr)
+        private static void AddRoute(ITcSysManager sysManager, IPAddress ipAddr)
         {
             ITcSmTreeItem routeConfiguration = sysManager.LookupTreeItem("TIRR");
-            string addProjectRouteIp = @"<TreeItem>
+            var addProjectRouteIp = @"<TreeItem>
                                            <RoutePrj>
                                              <AddProjectRoute>
-                                               <Name>" + ipaddr.ToString() + @"</Name>
-                                               <NetId>" + ipaddr.ToString() + @".1.1" + @"</NetId>
-                                               <IpAddr>" + ipaddr.ToString() + @"</IpAddr>
+                                               <Name>" + ipAddr + @"</Name>
+                                               <NetId>" + ipAddr + @".1.1" + @"</NetId>
+                                               <IpAddr>" + ipAddr + @"</IpAddr>
                                              </AddProjectRoute>
                                            </RoutePrj>
                                          </TreeItem>";
@@ -241,138 +206,116 @@ namespace AUTDServer
             routeConfiguration.ConsumeXml(addProjectRouteIp);
         }
 
-        static List<ITcSmTreeItem> ScanAUTDs(ITcSysManager sysManager)
+        private static List<ITcSmTreeItem> ScanAUTDs(ITcSysManager sysManager)
         {
             ITcSmTreeItem3 devices = (ITcSmTreeItem3)sysManager.LookupTreeItem("TIID");
-            XmlDocument doc = new XmlDocument();
+            var doc = new XmlDocument();
             string xml = devices.ProduceXml(false);
             doc.LoadXml(xml);
-            XmlNodeList nodes = doc.SelectNodes("TreeItem/DeviceGrpDef/FoundDevices/Device");
-            List<XmlNode> ethernetNodes = new List<XmlNode>();
-            foreach (XmlNode node in nodes)
-            {
-                XmlNode typeNode = node.SelectSingleNode("ItemSubType");
-
-                int subType = int.Parse(typeNode.InnerText);
-
-#pragma warning disable 0618
-                if (subType == (int)DeviceType.EtherCAT_AutomationProtocol || subType == (int)DeviceType.Ethernet_RTEthernet || subType == (int)DeviceType.EtherCAT_DirectMode || subType == (int)DeviceType.EtherCAT_DirectModeV210)
-#pragma warning restore 0618
-                {
-                    ethernetNodes.Add(node);
-                }
-            }
+            var nodes = doc.SelectNodes("TreeItem/DeviceGrpDef/FoundDevices/Device");
+            var ethernetNodes = (from XmlNode node in nodes let typeNode = node.SelectSingleNode("ItemSubType") let subType = int.Parse(typeNode.InnerText) where subType == (int) DeviceType.EtherCAT_AutomationProtocol || subType == (int) DeviceType.Ethernet_RTEthernet || subType == (int) DeviceType.EtherCAT_DirectMode || subType == (int) DeviceType.EtherCAT_DirectModeV210 select node).ToList();
 
             if (ethernetNodes.Count == 0)
-            {
                 throw new Exception("No devices were found. Check if TwinCAT3 is in Config Mode");
-            }
 
-            Console.WriteLine(string.Format("Scan found a RT-compatible Ethernet device.", ethernetNodes.Count));
+            Console.WriteLine("Scan found a RT-compatible Ethernet device.");
             ITcSmTreeItem3 device = (ITcSmTreeItem3)devices.CreateChild("EtherCAT Master", (int)DeviceType.EtherCAT_DirectMode, null, null);
 
             // Taking only the first found Ethernet Adapter
-            XmlNode ethernetNode = ethernetNodes[0];
-            XmlNode addressInfoNode = ethernetNode.SelectSingleNode("AddressInfo");
+            var ethernetNode = ethernetNodes[0];
+            var addressInfoNode = ethernetNode.SelectSingleNode("AddressInfo");
             addressInfoNode.SelectSingleNode("Pnp/DeviceDesc").InnerText = "TwincatEthernetDevice";
             // Set the Address Info
-            string xml2 = string.Format("<TreeItem><DeviceDef>{0}</DeviceDef></TreeItem>", addressInfoNode.OuterXml);
+            var xml2 = $"<TreeItem><DeviceDef>{addressInfoNode.OuterXml}</DeviceDef></TreeItem>";
             device.ConsumeXml(xml2);
 
-            string scanxml = "<TreeItem><DeviceDef><ScanBoxes>1</ScanBoxes></DeviceDef></TreeItem>";
-            device.ConsumeXml(scanxml);
+            const string scanXml = "<TreeItem><DeviceDef><ScanBoxes>1</ScanBoxes></DeviceDef></TreeItem>";
+            device.ConsumeXml(scanXml);
             List<ITcSmTreeItem> autds = new List<ITcSmTreeItem>();
             foreach (ITcSmTreeItem box in device)
             {
-                if (box.ItemSubTypeName == "AUTD")
+                if (box.ItemSubTypeName != "AUTD") continue;
+                var bdoc = new XmlDocument();
+                string bxml = box.ProduceXml(false);
+                bdoc.LoadXml(bxml);
+
+                // set DC
+                var dcOpmodes = bdoc.SelectNodes("TreeItem/EtherCAT/Slave/DC/OpMode");
+                foreach (XmlNode item in dcOpmodes)
                 {
-
-                    XmlDocument bdoc = new XmlDocument();
-                    string bxml = box.ProduceXml(false);
-                    bdoc.LoadXml(bxml);
-
-                    // set DC
-                    XmlNodeList dcOpmodes = bdoc.SelectNodes("TreeItem/EtherCAT/Slave/DC/OpMode");
-                    foreach (XmlNode item in dcOpmodes)
+                    if (item.SelectSingleNode("Name")?.InnerText == "DC")
                     {
-                        if (item.SelectSingleNode("Name").InnerText == "DC")
-                        {
-                            XmlAttribute attr = bdoc.CreateAttribute("Selected");
-                            attr.Value = "true";
-                            item.Attributes.SetNamedItem(attr);
-                        }
-                        else
-                        {
-                            item.Attributes.RemoveAll();
-                        }
+                        var attr = bdoc.CreateAttribute("Selected");
+                        attr.Value = "true";
+                        item.Attributes?.SetNamedItem(attr);
                     }
-                    box.ConsumeXml(bdoc.OuterXml);
-
-
-                    autds.Add(box);
+                    else
+                    {
+                        item.Attributes?.RemoveAll();
+                    }
                 }
+                box.ConsumeXml(bdoc.OuterXml);
+
+                autds.Add(box);
             }
 
-            Console.WriteLine(string.Format("{0} AUTDs are found and added.", autds.Count));
+            Console.WriteLine($"{autds.Count} AUTDs are found and added.");
 
             return autds;
         }
 
-        static void SetupTask(ITcSysManager sysManager, List<ITcSmTreeItem> autds)
+        private static void SetupTask(ITcSysManager sysManager, List<ITcSmTreeItem> autds)
         {
-            const int HEAD_SIZE = 64;
-            const int BODY_SIZE = 249;
-
             ITcSmTreeItem tasks = sysManager.LookupTreeItem("TIRT");
             ITcSmTreeItem task1 = tasks.CreateChild("Task 1", 0, null, null);
-            XmlDocument doc = new XmlDocument();
+            var doc = new XmlDocument();
             string xml = task1.ProduceXml(false);
             doc.LoadXml(xml);
 
             // set cycle: 1ms
-            doc.SelectSingleNode("TreeItem/TaskDef/CycleTime").InnerText = "10000";
+            doc.SelectSingleNode("TreeItem/TaskDef/CycleTime").InnerText = "5000";
             task1.ConsumeXml(doc.OuterXml);
 
             ITcSmTreeItem task1out = sysManager.LookupTreeItem("TIRT^Task 1^Outputs");
             // make global header
-            for (int i = 0; i < HEAD_SIZE; i++)
+            for (var i = 0; i < HEAD_SIZE; i++)
             {
-                string name = string.Format("header[{0}]", i);
+                var name = $"header[{i}]";
                 task1out.CreateChild(name, -1, null, "WORD");
             }
             // make gain body
-            for (int id = 0; id < autds.Count; id++)
+            for (var id = 0; id < autds.Count; id++)
             {
-                for (int i = 0; i < BODY_SIZE; i++)
+                for (var i = 0; i < BODY_SIZE; i++)
                 {
-                    string name = string.Format("gbody[{0}][{1}]", id, i);
+                    var name = $"gbody[{id}][{i}]";
                     task1out.CreateChild(name, -1, null, "WORD");
                 }
             }
             ITcSmTreeItem task1in = sysManager.LookupTreeItem("TIRT^Task 1^Inputs");
-            for (int id = 0; id < autds.Count; id++)
+            for (var id = 0; id < autds.Count; id++)
             {
-                string name = string.Format("input[{0}]", id);
+                var name = $"input[{id}]";
                 task1in.CreateChild(name, -1, null, "WORD");
             }
             // connect links
-            for (int id = 0; id < autds.Count; id++)
+            for (var id = 0; id < autds.Count; id++)
             {
-                for (int i = 0; i < HEAD_SIZE; i++)
+                for (var i = 0; i < HEAD_SIZE; i++)
                 {
-                    string source = string.Format("TIRT^Task 1^Outputs^header[{0}]", i);
-                    string destination = string.Format("TIID^EtherCAT Master^Box {0} (AUTD)^RxPdo1^data[{1}]", id + 1, i);
+                    var source = $"TIRT^Task 1^Outputs^header[{i}]";
+                    var destination = $"TIID^EtherCAT Master^Box {id + 1} (AUTD)^RxPdo1^data[{i}]";
                     sysManager.LinkVariables(source, destination);
                 }
-                for (int i = 0; i < BODY_SIZE; i++)
+                for (var i = 0; i < BODY_SIZE; i++)
                 {
-                    string source = string.Format("TIRT^Task 1^Outputs^gbody[{0}][{1}]", id, i);
-                    string destination = string.Format("TIID^EtherCAT Master^Box {0} (AUTD)^RxPdo0^data[{1}]", id + 1, i);
+                    var source = $"TIRT^Task 1^Outputs^gbody[{id}][{i}]";
+                    var destination = $"TIID^EtherCAT Master^Box {id + 1} (AUTD)^RxPdo0^data[{i}]";
                     sysManager.LinkVariables(source, destination);
                 }
                 {
-                    string source = string.Format("TIRT^Task 1^Inputs^input[{0}]", id);
-                    string destination = string.Format("TIID^EtherCAT Master^Box {0} (AUTD)^TxPdo^dummy", id + 1);
+                    var source = $"TIRT^Task 1^Inputs^input[{id}]";
+                    var destination = $"TIID^EtherCAT Master^Box {id + 1} (AUTD)^TxPdo^dummy";
                     sysManager.LinkVariables(source, destination);
                 }
             }
@@ -414,19 +357,16 @@ namespace AUTDServer
             // </CPUs>
             // </RTimeSetDef>
             // </TreeItem> 
-            string xml = null;
-            MemoryStream stream = new MemoryStream();
-            StringWriter stringWriter = new StringWriter();
-            using (XmlWriter writer = XmlTextWriter.Create(stringWriter))
+            string xml;
+            var stream = new MemoryStream();
+            var stringWriter = new StringWriter();
+            using (var writer = XmlWriter.Create(stringWriter))
             {
                 writer.WriteStartElement("TreeItem");
                 writer.WriteStartElement("RTimeSetDef");
                 writer.WriteElementString("MaxCPUs", "1");
-                //string affinityString = string.Format("#x{0}", ((ulong)
-                //cpuAffinity.MaskQuad).ToString("x16"));
-                //writer.WriteElementString("Affinity", affinityString);
                 writer.WriteStartElement("CPUs");
-                writeCpuProperties(writer, 0, 10000);
+                WriteCpuProperties(writer, 0, 5000);
                 writer.WriteEndElement();     // CPUs     
                 writer.WriteEndElement();     // RTimeSetDef     
                 writer.WriteEndElement();     // TreeItem
@@ -435,17 +375,14 @@ namespace AUTDServer
             realtimeSettings.ConsumeXml(xml);
         }
 
-        static private void writeCpuProperties(XmlWriter writer, int id, /*int loadLimit, */int baseTime/*, int latencyWarning*/)
+        private static void WriteCpuProperties(XmlWriter writer, int id, /*int loadLimit, */int baseTime/*, int latencyWarning*/)
         {
             writer.WriteStartElement("CPU");
             writer.WriteAttributeString("id", id.ToString());
-            //writer.WriteElementString("LoadLimit", loadLimit.ToString());
             writer.WriteElementString("BaseTime", baseTime.ToString());
-            //writer.WriteElementString("LatencyWarning", latencyWarning.ToString());
             writer.WriteEndElement();
         }
     }
-
 
     public class MessageFilter : IOleMessageFilter
     {
@@ -457,47 +394,35 @@ namespace AUTDServer
         public static void Register()
         {
             IOleMessageFilter newFilter = new MessageFilter();
-            IOleMessageFilter oldFilter = null;
-            CoRegisterMessageFilter(newFilter, out oldFilter);
+            CoRegisterMessageFilter(newFilter, out _);
         }
 
         // Done with the filter, close it.
         public static void Revoke()
         {
-            IOleMessageFilter oldFilter = null;
-            CoRegisterMessageFilter(null, out oldFilter);
+            CoRegisterMessageFilter(null, out _);
         }
 
         //
         // IOleMessageFilter functions.
         // Handle incoming thread requests.
         int IOleMessageFilter.HandleInComingCall(int dwCallType,
-          System.IntPtr hTaskCaller, int dwTickCount, System.IntPtr
+          IntPtr hTaskCaller, int dwTickCount, IntPtr
           lpInterfaceInfo)
         {
-            //Return the flag SERVERCALL_ISHANDLED.
             return 0;
         }
 
         // Thread call was rejected, so try again.
-        int IOleMessageFilter.RetryRejectedCall(System.IntPtr
+        int IOleMessageFilter.RetryRejectedCall(IntPtr
           hTaskCallee, int dwTickCount, int dwRejectType)
         {
-            if (dwRejectType == 2)
-            // flag = SERVERCALL_RETRYLATER.
-            {
-                // Retry the thread call immediately if return >=0 & 
-                // <100.
-                return 99;
-            }
-            // Too busy; cancel call.
-            return -1;
+            return dwRejectType == 2 ? 99 : -1;
         }
 
-        int IOleMessageFilter.MessagePending(System.IntPtr hTaskCallee,
+        int IOleMessageFilter.MessagePending(IntPtr hTaskCallee,
           int dwTickCount, int dwPendingType)
         {
-            //Return the flag PENDINGMSG_WAITDEFPROCESS.
             return 2;
         }
 
@@ -510,7 +435,7 @@ namespace AUTDServer
 
     [ComImport(), Guid("00000016-0000-0000-C000-000000000046"),
     InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IOleMessageFilter
+    internal interface IOleMessageFilter
     {
         [PreserveSig]
         int HandleInComingCall(
