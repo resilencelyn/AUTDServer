@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Xml;
 using TCatSysManagerLib;
-using System.Text;
 using TwinCAT.SystemManager;
 using EnvDTE;
 using EnvDTE80;
@@ -274,7 +273,7 @@ namespace AUTDServer
             doc.LoadXml(xml);
 
             // set cycle: 1ms
-            doc.SelectSingleNode("TreeItem/TaskDef/CycleTime").InnerText = "10000";
+            doc.SelectSingleNode("TreeItem/TaskDef/CycleTime").InnerText = "5000";
             task1.ConsumeXml(doc.OuterXml);
 
             ITcSmTreeItem task1out = sysManager.LookupTreeItem("TIRT^Task 1^Outputs");
@@ -367,7 +366,7 @@ namespace AUTDServer
                 writer.WriteStartElement("RTimeSetDef");
                 writer.WriteElementString("MaxCPUs", "1");
                 writer.WriteStartElement("CPUs");
-                WriteCpuProperties(writer, 0, 10000);
+                WriteCpuProperties(writer, 0, 5000);
                 writer.WriteEndElement();     // CPUs     
                 writer.WriteEndElement();     // RTimeSetDef     
                 writer.WriteEndElement();     // TreeItem
