@@ -11,6 +11,7 @@ using System.Net;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using TwinCAT.Ads;
+using System.Xml.Linq;
 
 namespace AUTDServer
 {
@@ -20,9 +21,39 @@ namespace AUTDServer
         private const int HEAD_SIZE = 64;
         private const int BODY_SIZE = 249;
 
+        private static string TaskCycleTime = "10000";
+        private static string CPUbaseTime = "10000";
+        private static string Sync0Cycletime = "500000";
+
+        private static void LoadSettings()
+        {
+            var fi = new FileInfo(System.Reflection.Assembly.GetExecutingAssembly().Location);
+            string startupPath = fi.Directory.FullName;
+
+            string filePath = Path.Combine(startupPath, "settings.ini");
+            if (File.Exists(filePath))
+            {
+                using (var sr = new StreamReader(filePath))
+                {
+                    while(!sr.EndOfStream)
+                    {
+                        var line = sr.ReadLine();
+                        if (line.StartsWith("TaskCycleTime"))
+                            TaskCycleTime = line.Split('=')[1].Trim();
+                        if (line.StartsWith("CPUbaseTime"))
+                            CPUbaseTime = line.Split('=')[1].Trim();
+                        if (line.StartsWith("Sync0Cycletime"))
+                            Sync0Cycletime = line.Split('=')[1].Trim();
+                    }
+                }
+            }
+        }
+
         [STAThread]
         private static void Main(string[] args)
         {
+            LoadSettings();
+
             var solutionPath = Path.Combine(
                 Environment.GetEnvironmentVariable("temp") ?? string.Empty,
                 SOLUTION_NAME);
@@ -241,6 +272,7 @@ namespace AUTDServer
 
                 // set DC
                 var dcOpmodes = bdoc.SelectNodes("TreeItem/EtherCAT/Slave/DC/OpMode");
+
                 foreach (XmlNode item in dcOpmodes)
                 {
                     if (item.SelectSingleNode("Name")?.InnerText == "DC")
@@ -248,12 +280,19 @@ namespace AUTDServer
                         var attr = bdoc.CreateAttribute("Selected");
                         attr.Value = "true";
                         item.Attributes?.SetNamedItem(attr);
+
+                        item.SelectSingleNode("CycleTimeSync0").InnerText = Sync0Cycletime;
+                        attr = bdoc.CreateAttribute("Factor");
+                        attr.Value = "0";
+                        item.Attributes?.SetNamedItem(attr);
+                        item.SelectSingleNode("CycleTimeSync0").Attributes?.SetNamedItem(attr);
                     }
                     else
                     {
                         item.Attributes?.RemoveAll();
                     }
                 }
+
                 box.ConsumeXml(bdoc.OuterXml);
 
                 autds.Add(box);
@@ -273,7 +312,7 @@ namespace AUTDServer
             doc.LoadXml(xml);
 
             // set cycle: 1ms
-            doc.SelectSingleNode("TreeItem/TaskDef/CycleTime").InnerText = "5000";
+            doc.SelectSingleNode("TreeItem/TaskDef/CycleTime").InnerText = TaskCycleTime;
             task1.ConsumeXml(doc.OuterXml);
 
             ITcSmTreeItem task1out = sysManager.LookupTreeItem("TIRT^Task 1^Outputs");
@@ -343,20 +382,6 @@ namespace AUTDServer
         static public void AssignCPUCores(ITcSysManager sysManager)
         {
             ITcSmTreeItem realtimeSettings = sysManager.LookupTreeItem("TIRS");
-            // CPU Settings
-            // <TreeItem>
-            // <RTimeSetDef>
-            // <MaxCPUs>3</MaxCPUs>
-            // <Affinity>#x0000000000000007</Affinity>
-            // <CPUs>
-            // <CPU id="0">
-            // <LoadLimit>10</LoadLimit>
-            // <BaseTime>10000</BaseTime>
-            // <LatencyWarning>200</LatencyWarning>
-            // </CPU>
-            // </CPUs>
-            // </RTimeSetDef>
-            // </TreeItem> 
             string xml;
             var stream = new MemoryStream();
             var stringWriter = new StringWriter();
@@ -366,7 +391,7 @@ namespace AUTDServer
                 writer.WriteStartElement("RTimeSetDef");
                 writer.WriteElementString("MaxCPUs", "1");
                 writer.WriteStartElement("CPUs");
-                WriteCpuProperties(writer, 0, 5000);
+                WriteCpuProperties(writer, 0);
                 writer.WriteEndElement();     // CPUs     
                 writer.WriteEndElement();     // RTimeSetDef     
                 writer.WriteEndElement();     // TreeItem
@@ -375,11 +400,11 @@ namespace AUTDServer
             realtimeSettings.ConsumeXml(xml);
         }
 
-        private static void WriteCpuProperties(XmlWriter writer, int id, /*int loadLimit, */int baseTime/*, int latencyWarning*/)
+        private static void WriteCpuProperties(XmlWriter writer, int id)
         {
             writer.WriteStartElement("CPU");
             writer.WriteAttributeString("id", id.ToString());
-            writer.WriteElementString("BaseTime", baseTime.ToString());
+            writer.WriteElementString("BaseTime", CPUbaseTime);
             writer.WriteEndElement();
         }
     }
