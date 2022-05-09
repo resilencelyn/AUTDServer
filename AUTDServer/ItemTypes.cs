@@ -1560,13 +1560,13 @@ namespace TwinCAT.SystemManager
         /// CX1190 UPS ('uninterruptable power supplier')(CX1190-UPS)(BOXTYPE_CX1190) (Subtype 9702)
         /// </summary>
         [Description("CX1190 UPS ('uninterruptable power supplier')(CX1190-UPS)(BOXTYPE_CX1190) (Subtype 9702)")]
-        KBus_CX1190 = 9702,
+        KBus_CX1190 = 9702
     }
 
     /// <summary>
     /// Type of the Device
     /// </summary>
-    public enum DeviceType : int
+    public enum DeviceType
     {
         /// <summary>
         /// 
@@ -2291,33 +2291,33 @@ namespace TwinCAT.SystemManager
         /// <summary>
         /// 
         /// </summary>
-        None  = TCatSysManagerLib.IECLANGUAGETYPES.IECLANGUAGE_NONE,
+        None  = IECLANGUAGETYPES.IECLANGUAGE_NONE,
 
         /// <summary>
         /// 
         /// </summary>
-        ST = TCatSysManagerLib.IECLANGUAGETYPES.IECLANGUAGE_ST,
+        ST = IECLANGUAGETYPES.IECLANGUAGE_ST,
         /// <summary>
         /// 
         /// </summary>
-        IL = TCatSysManagerLib.IECLANGUAGETYPES.IECLANGUAGE_IL,
+        IL = IECLANGUAGETYPES.IECLANGUAGE_IL,
         /// <summary>
         /// 
         /// </summary>
-        SFC = TCatSysManagerLib.IECLANGUAGETYPES.IECLANGUAGE_SFC,
+        SFC = IECLANGUAGETYPES.IECLANGUAGE_SFC,
         /// <summary>
         /// 
         /// </summary>
-        FBD = TCatSysManagerLib.IECLANGUAGETYPES.IECLANGUAGE_FBD,
+        FBD = IECLANGUAGETYPES.IECLANGUAGE_FBD,
         /// <summary>
         /// 
         /// </summary>
-        CFC = TCatSysManagerLib.IECLANGUAGETYPES.IECLANGUAGE_CFC,
+        CFC = IECLANGUAGETYPES.IECLANGUAGE_CFC,
 
         /// <summary>
         /// 
         /// </summary>
-        LD = TCatSysManagerLib.IECLANGUAGETYPES.IECLANGUAGE_LD
+        LD = IECLANGUAGETYPES.IECLANGUAGE_LD
     }
 
     /// <summary>
@@ -2368,7 +2368,7 @@ namespace TwinCAT.SystemManager
         /// </summary>
         /// <param name="type">The type.</param>
         /// <returns></returns>
-        public static Int32 AsInt32(this TreeItemType type)
+        public static int AsInt32(this TreeItemType type)
         {
             return (int)type;
         }
@@ -2396,7 +2396,7 @@ namespace TwinCAT.SystemManager
         /// </summary>
         /// <param name="type">The type.</param>
         /// <returns></returns>
-        public static Int32 AsInt32(this DeviceType type)
+        public static int AsInt32(this DeviceType type)
         {
             return (int)type;
         }
@@ -2424,7 +2424,7 @@ namespace TwinCAT.SystemManager
         /// </summary>
         /// <param name="type">The type.</param>
         /// <returns></returns>
-        public static Int32 AsInt32(this BoxType type)
+        public static int AsInt32(this BoxType type)
         {
             return (int)type;
         }
@@ -2433,7 +2433,7 @@ namespace TwinCAT.SystemManager
     /// <summary>
     /// Group type of variables
     /// </summary>
-    public enum VarGroupType : int
+    public enum VarGroupType
     {
         /// <summary>
         /// Variable Group is unknown
@@ -2450,7 +2450,7 @@ namespace TwinCAT.SystemManager
         /// <summary>
         /// Channel variable group
         /// </summary>
-        Channel = 3,
+        Channel = 3
     }
 }
 

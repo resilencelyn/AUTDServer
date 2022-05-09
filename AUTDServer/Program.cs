@@ -11,52 +11,57 @@ using System.Net;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using TwinCAT.Ads;
-using System.Xml.Linq;
 
 namespace AUTDServer
 {
     internal class Program
     {
-        private static readonly string SOLUTION_NAME = "TwinCATAUTDServer";
-        private const int HEAD_SIZE = 64;
-        private const int BODY_SIZE = 249;
+        private const string SolutionName = "TwinCATAUTDServer";
+        private const int HeadSize = 64;
+        private const int BodySize = 249;
 
-        private static string TaskCycleTime = "10000";
-        private static string CPUbaseTime = "10000";
-        private static string Sync0Cycletime = "500000";
+        private const int TaskCycleTimeBase = 10000;
+        private const int CpuBaseTimeBase = 10000;
+        private const int Sync0CycleTimeBase = 500000;
+
+        private static string _cycleTicks = "2";
+        private static string _taskCycleTime = "10000";
+        private static string _cpuBaseTime = "10000";
+        private static string _sync0CycleTime = "500000";
 
         private static void LoadSettings()
         {
             var fi = new FileInfo(System.Reflection.Assembly.GetExecutingAssembly().Location);
-            string startupPath = fi.Directory.FullName;
+            var startupPath = fi.Directory.FullName;
 
-            string filePath = Path.Combine(startupPath, "settings.ini");
-            if (File.Exists(filePath))
+            var filePath = Path.Combine(startupPath, "settings.ini");
+            if (!File.Exists(filePath)) return;
+            using (var sr = new StreamReader(filePath))
             {
-                using (var sr = new StreamReader(filePath))
+                while (!sr.EndOfStream)
                 {
-                    while(!sr.EndOfStream)
-                    {
-                        var line = sr.ReadLine();
-                        if (line.StartsWith("TaskCycleTime"))
-                            TaskCycleTime = line.Split('=')[1].Trim();
-                        if (line.StartsWith("CPUbaseTime"))
-                            CPUbaseTime = line.Split('=')[1].Trim();
-                        if (line.StartsWith("Sync0Cycletime"))
-                            Sync0Cycletime = line.Split('=')[1].Trim();
-                    }
+                    var line = sr.ReadLine();
+
+                    if (line.StartsWith("CycleTicks"))
+                        _cycleTicks = line.Split('=')[1].Trim();
+                    if (line.StartsWith("TaskCycleTime"))
+                        _taskCycleTime = line.Split('=')[1].Trim();
+                    if (line.StartsWith("CPUbaseTime"))
+                        _cpuBaseTime = line.Split('=')[1].Trim();
+                    if (line.StartsWith("Sync0Cycletime"))
+                        _sync0CycleTime = line.Split('=')[1].Trim();
                 }
             }
         }
 
         [STAThread]
-        private static void Main(string[] args)
+        private static void Main()
         {
             LoadSettings();
 
             var solutionPath = Path.Combine(
                 Environment.GetEnvironmentVariable("temp") ?? string.Empty,
-                SOLUTION_NAME);
+                SolutionName);
             MessageFilter.Register();
             try
             {
@@ -67,8 +72,8 @@ namespace AUTDServer
                     if (cmd == "-y") alwaysYes = true;
 
                 // Close all TwinCAT Autd Server solutions currently opened
-                var processes = System.Diagnostics.Process.GetProcesses().Where(x => x.MainWindowTitle.StartsWith(SOLUTION_NAME) && x.ProcessName.Contains("devenv"));
-                foreach (var process in processes) GetDTE(process.Id)?.Quit();;
+                var processes = System.Diagnostics.Process.GetProcesses().Where(x => x.MainWindowTitle.StartsWith(SolutionName) && x.ProcessName.Contains("devenv"));
+                foreach (var process in processes) GetDte(process.Id)?.Quit();
 
                 // Wait for input
                 Console.WriteLine("Please Enter the IP Address of your Client to allow connection: [127.0.0.1]");
@@ -97,8 +102,8 @@ namespace AUTDServer
                     AddRoute(sysManager, ipAddr);
                 }
                 Console.WriteLine("Scanning Devices...");
-                List<ITcSmTreeItem> autds = ScanAUTDs(sysManager);
-                AssignCPUCores(sysManager);
+                var autds = ScanAutDs(sysManager);
+                AssignCpuCores(sysManager);
                 SetupTask(sysManager, autds);
                 Console.WriteLine("Activating and Restarting TwinCAT3...");
                 sysManager.ActivateConfiguration();
@@ -125,7 +130,7 @@ namespace AUTDServer
         [DllImport("ole32.dll")]
         private static extern int CreateBindCtx(uint reserved, out IBindCtx ppbc);
 
-        public static DTE GetDTE(int processId)
+        public static DTE GetDte(int processId)
         {
             var progId = "!TcXaeShell.DTE.15.0:" + processId;
             object runningObject = null;
@@ -136,7 +141,7 @@ namespace AUTDServer
 
             try
             {
-                Marshal.ThrowExceptionForHR(CreateBindCtx(reserved: 0, ppbc: out bindCtx));
+                Marshal.ThrowExceptionForHR(CreateBindCtx(0, out bindCtx));
                 bindCtx.GetRunningObjectTable(out rot);
                 rot.EnumRunning(out enumMonikers);
 
@@ -171,8 +176,8 @@ namespace AUTDServer
 
         private static void SetConfigMode()
         {
-            TcAdsClient client = new TcAdsClient();
-            StateInfo mode = new StateInfo();
+            var client = new TcAdsClient();
+            var mode = new StateInfo();
 
             client.Connect((int)AmsPort.SystemService);
             mode.AdsState = client.ReadState().AdsState;
@@ -207,23 +212,23 @@ namespace AUTDServer
             Directory.CreateDirectory(path);
 
             var solution = dte.Solution as Solution2;
-            solution.Create(path, SOLUTION_NAME);
-            solution.SaveAs(Path.Combine(path, SOLUTION_NAME + ".sln"));
+            solution.Create(path, SolutionName);
+            solution.SaveAs(Path.Combine(path, SolutionName + ".sln"));
 
             const string template = @"C:\TwinCAT\3.1\Components\Base\PrjTemplate\TwinCAT Project.tsproj"; //path to project template
-            return solution.AddFromTemplate(template, path, SOLUTION_NAME);
+            return solution.AddFromTemplate(template, path, SolutionName);
         }
 
         private static void SaveProject(DTE2 dte, Project project, string path)
         {
             project.Save();
-            dte.Solution.SaveAs(Path.Combine(path, SOLUTION_NAME + ".sln"));
+            dte.Solution.SaveAs(Path.Combine(path, SolutionName + ".sln"));
             Console.WriteLine("The Solution was saved at " + path + ".");
         }
 
         private static void AddRoute(ITcSysManager sysManager, IPAddress ipAddr)
         {
-            ITcSmTreeItem routeConfiguration = sysManager.LookupTreeItem("TIRR");
+            var routeConfiguration = sysManager.LookupTreeItem("TIRR");
             var addProjectRouteIp = @"<TreeItem>
                                            <RoutePrj>
                                              <AddProjectRoute>
@@ -237,20 +242,20 @@ namespace AUTDServer
             routeConfiguration.ConsumeXml(addProjectRouteIp);
         }
 
-        private static List<ITcSmTreeItem> ScanAUTDs(ITcSysManager sysManager)
+        private static List<ITcSmTreeItem> ScanAutDs(ITcSysManager sysManager)
         {
-            ITcSmTreeItem3 devices = (ITcSmTreeItem3)sysManager.LookupTreeItem("TIID");
+            var devices = (ITcSmTreeItem3)sysManager.LookupTreeItem("TIID");
             var doc = new XmlDocument();
-            string xml = devices.ProduceXml(false);
+            var xml = devices.ProduceXml(false);
             doc.LoadXml(xml);
             var nodes = doc.SelectNodes("TreeItem/DeviceGrpDef/FoundDevices/Device");
-            var ethernetNodes = (from XmlNode node in nodes let typeNode = node.SelectSingleNode("ItemSubType") let subType = int.Parse(typeNode.InnerText) where subType == (int) DeviceType.EtherCAT_AutomationProtocol || subType == (int) DeviceType.Ethernet_RTEthernet || subType == (int) DeviceType.EtherCAT_DirectMode || subType == (int) DeviceType.EtherCAT_DirectModeV210 select node).ToList();
+            var ethernetNodes = (from XmlNode node in nodes let typeNode = node.SelectSingleNode("ItemSubType") let subType = int.Parse(typeNode.InnerText) where subType == (int)DeviceType.EtherCAT_AutomationProtocol || subType == (int)DeviceType.EtherCAT_DirectMode || subType == (int)DeviceType.EtherCAT_DirectModeV210 select node).ToList();
 
             if (ethernetNodes.Count == 0)
                 throw new Exception("No devices were found. Check if TwinCAT3 is in Config Mode");
 
             Console.WriteLine("Scan found a RT-compatible Ethernet device.");
-            ITcSmTreeItem3 device = (ITcSmTreeItem3)devices.CreateChild("EtherCAT Master", (int)DeviceType.EtherCAT_DirectMode, null, null);
+            var device = (ITcSmTreeItem3)devices.CreateChild("EtherCAT Master", (int)DeviceType.EtherCAT_DirectMode, null);
 
             // Taking only the first found Ethernet Adapter
             var ethernetNode = ethernetNodes[0];
@@ -262,12 +267,12 @@ namespace AUTDServer
 
             const string scanXml = "<TreeItem><DeviceDef><ScanBoxes>1</ScanBoxes></DeviceDef></TreeItem>";
             device.ConsumeXml(scanXml);
-            List<ITcSmTreeItem> autds = new List<ITcSmTreeItem>();
+            var autds = new List<ITcSmTreeItem>();
             foreach (ITcSmTreeItem box in device)
             {
                 if (box.ItemSubTypeName != "AUTD") continue;
                 var bdoc = new XmlDocument();
-                string bxml = box.ProduceXml(false);
+                var bxml = box.ProduceXml(false);
                 bdoc.LoadXml(bxml);
 
                 // set DC
@@ -281,7 +286,7 @@ namespace AUTDServer
                         attr.Value = "true";
                         item.Attributes?.SetNamedItem(attr);
 
-                        item.SelectSingleNode("CycleTimeSync0").InnerText = Sync0Cycletime;
+                        item.SelectSingleNode("CycleTimeSync0").InnerText = _cycleTicks == "manual" ? _sync0CycleTime : (Sync0CycleTimeBase * int.Parse(_cycleTicks)).ToString();
                         attr = bdoc.CreateAttribute("Factor");
                         attr.Value = "0";
                         item.Attributes?.SetNamedItem(attr);
@@ -303,50 +308,49 @@ namespace AUTDServer
             return autds;
         }
 
-        private static void SetupTask(ITcSysManager sysManager, List<ITcSmTreeItem> autds)
+        private static void SetupTask(ITcSysManager sysManager, IReadOnlyCollection<ITcSmTreeItem> autds)
         {
-            ITcSmTreeItem tasks = sysManager.LookupTreeItem("TIRT");
-            ITcSmTreeItem task1 = tasks.CreateChild("Task 1", 0, null, null);
+            var tasks = sysManager.LookupTreeItem("TIRT");
+            var task1 = tasks.CreateChild("Task 1", 0, null);
             var doc = new XmlDocument();
-            string xml = task1.ProduceXml(false);
+            var xml = task1.ProduceXml(false);
             doc.LoadXml(xml);
 
-            // set cycle: 1ms
-            doc.SelectSingleNode("TreeItem/TaskDef/CycleTime").InnerText = TaskCycleTime;
+            doc.SelectSingleNode("TreeItem/TaskDef/CycleTime").InnerText = _cycleTicks == "manual" ? _taskCycleTime : (TaskCycleTimeBase * int.Parse(_cycleTicks)).ToString();
             task1.ConsumeXml(doc.OuterXml);
 
-            ITcSmTreeItem task1out = sysManager.LookupTreeItem("TIRT^Task 1^Outputs");
+            var task1Out = sysManager.LookupTreeItem("TIRT^Task 1^Outputs");
             // make global header
-            for (var i = 0; i < HEAD_SIZE; i++)
+            for (var i = 0; i < HeadSize; i++)
             {
                 var name = $"header[{i}]";
-                task1out.CreateChild(name, -1, null, "WORD");
+                task1Out.CreateChild(name, -1, null, "WORD");
             }
             // make gain body
             for (var id = 0; id < autds.Count; id++)
             {
-                for (var i = 0; i < BODY_SIZE; i++)
+                for (var i = 0; i < BodySize; i++)
                 {
                     var name = $"gbody[{id}][{i}]";
-                    task1out.CreateChild(name, -1, null, "WORD");
+                    task1Out.CreateChild(name, -1, null, "WORD");
                 }
             }
-            ITcSmTreeItem task1in = sysManager.LookupTreeItem("TIRT^Task 1^Inputs");
+            var task1In = sysManager.LookupTreeItem("TIRT^Task 1^Inputs");
             for (var id = 0; id < autds.Count; id++)
             {
                 var name = $"input[{id}]";
-                task1in.CreateChild(name, -1, null, "WORD");
+                task1In.CreateChild(name, -1, null, "WORD");
             }
             // connect links
             for (var id = 0; id < autds.Count; id++)
             {
-                for (var i = 0; i < HEAD_SIZE; i++)
+                for (var i = 0; i < HeadSize; i++)
                 {
                     var source = $"TIRT^Task 1^Outputs^header[{i}]";
                     var destination = $"TIID^EtherCAT Master^Box {id + 1} (AUTD)^RxPdo1^data[{i}]";
                     sysManager.LinkVariables(source, destination);
                 }
-                for (var i = 0; i < BODY_SIZE; i++)
+                for (var i = 0; i < BodySize; i++)
                 {
                     var source = $"TIRT^Task 1^Outputs^gbody[{id}][{i}]";
                     var destination = $"TIID^EtherCAT Master^Box {id + 1} (AUTD)^RxPdo0^data[{i}]";
@@ -360,30 +364,29 @@ namespace AUTDServer
             }
         }
 
-        [Flags()]
+        [Flags]
         public enum CpuAffinity : ulong
         {
-            CPU1 = 0x0000000000000001,
-            CPU2 = 0x0000000000000002,
-            CPU3 = 0x0000000000000004,
-            CPU4 = 0x0000000000000008,
-            CPU5 = 0x0000000000000010,
-            CPU6 = 0x0000000000000020,
-            CPU7 = 0x0000000000000040,
-            CPU8 = 0x0000000000000080,
+            Cpu1 = 0x0000000000000001,
+            Cpu2 = 0x0000000000000002,
+            Cpu3 = 0x0000000000000004,
+            Cpu4 = 0x0000000000000008,
+            Cpu5 = 0x0000000000000010,
+            Cpu6 = 0x0000000000000020,
+            Cpu7 = 0x0000000000000040,
+            Cpu8 = 0x0000000000000080,
             None = 0x0000000000000000,
-            MaskSingle = CPU1,
-            MaskDual = CPU1 | CPU2,
-            MaskQuad = MaskDual | CPU3 | CPU4,
-            MaskHexa = MaskQuad | CPU5 | CPU6,
-            MaskOct = MaskHexa | CPU7 | CPU8,
+            MaskSingle = Cpu1,
+            MaskDual = Cpu1 | Cpu2,
+            MaskQuad = MaskDual | Cpu3 | Cpu4,
+            MaskHexa = MaskQuad | Cpu5 | Cpu6,
+            MaskOct = MaskHexa | Cpu7 | Cpu8,
             MaskAll = 0xFFFFFFFFFFFFFFFF
         }
-        static public void AssignCPUCores(ITcSysManager sysManager)
+
+        public static void AssignCpuCores(ITcSysManager sysManager)
         {
-            ITcSmTreeItem realtimeSettings = sysManager.LookupTreeItem("TIRS");
-            string xml;
-            var stream = new MemoryStream();
+            var realtimeSettings = sysManager.LookupTreeItem("TIRS");
             var stringWriter = new StringWriter();
             using (var writer = XmlWriter.Create(stringWriter))
             {
@@ -392,11 +395,11 @@ namespace AUTDServer
                 writer.WriteElementString("MaxCPUs", "1");
                 writer.WriteStartElement("CPUs");
                 WriteCpuProperties(writer, 0);
-                writer.WriteEndElement();     // CPUs     
-                writer.WriteEndElement();     // RTimeSetDef     
-                writer.WriteEndElement();     // TreeItem
+                writer.WriteEndElement(); // CPUs     
+                writer.WriteEndElement(); // RTimeSetDef     
+                writer.WriteEndElement(); // TreeItem
             }
-            xml = stringWriter.ToString();
+            var xml = stringWriter.ToString();
             realtimeSettings.ConsumeXml(xml);
         }
 
@@ -404,7 +407,7 @@ namespace AUTDServer
         {
             writer.WriteStartElement("CPU");
             writer.WriteAttributeString("id", id.ToString());
-            writer.WriteElementString("BaseTime", CPUbaseTime);
+            writer.WriteElementString("BaseTime", _cycleTicks == "manual" ? _cpuBaseTime : CpuBaseTimeBase.ToString());
             writer.WriteEndElement();
         }
     }
@@ -458,7 +461,7 @@ namespace AUTDServer
           IOleMessageFilter oldFilter);
     }
 
-    [ComImport(), Guid("00000016-0000-0000-C000-000000000046"),
+    [ComImport, Guid("00000016-0000-0000-C000-000000000046"),
     InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIUnknown)]
     internal interface IOleMessageFilter
     {
