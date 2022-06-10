@@ -20,13 +20,13 @@ namespace AUTDServer
         private const int HeadSize = 64;
         private const int BodySize = 249;
 
-        private const int TaskCycleTimeBase = 10000;
-        private const int CpuBaseTimeBase = 10000;
+        private const int TaskCycleTimeBase = 5000;
+        private const int CpuBaseTimeBase = 5000;
         private const int Sync0CycleTimeBase = 500000;
 
-        private static string _cycleTicks = "2";
-        private static string _taskCycleTime = "10000";
-        private static string _cpuBaseTime = "10000";
+        private static string _cycleTicks = "1";
+        private static string _taskCycleTime = "5000";
+        private static string _cpuBaseTime = "5000";
         private static string _sync0CycleTime = "500000";
 
         private static void LoadSettings()
